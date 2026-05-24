@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@keyframes camera-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  10% { transform: translate3d(-3px, -2px, 0) rotate(-0.5deg); }
+  20% { transform: translate3d(3px, 2px, 0) rotate(0.5deg); }
+  30% { transform: translate3d(-4px, 1px, 0) rotate(-0.5deg); }
+  40% { transform: translate3d(4px, -1px, 0) rotate(0.5deg); }
+  50% { transform: translate3d(-2px, 3px, 0) rotate(-0.2deg); }
+  60% { transform: translate3d(3px, 2px, 0) rotate(0.2deg); }
+  70% { transform: translate3d(-1px, -2px, 0) rotate(0deg); }
+  80% { transform: translate3d(2px, 1px, 0) rotate(0.1deg); }
+  90% { transform: translate3d(-1px, -1px, 0) rotate(-0.1deg); }
+}
+
+.animate-camera-shake {
+  animation: camera-shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+

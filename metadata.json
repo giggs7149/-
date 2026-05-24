@@ -1,0 +1,6 @@
+{
+  "name": "山海萌兽：啵啵消消大国战",
+  "description": "一款画风超吸睛可爱的啵啵萌宠堆叠消除微信大国战小游戏，集成流量主收益模拟、广告大盘透视，支持快捷开发套件代码导出！",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
