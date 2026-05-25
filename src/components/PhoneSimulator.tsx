@@ -296,6 +296,35 @@ export default function PhoneSimulator({
 
   const [hasUsedMilestoneReviveToday, setHasUsedMilestoneReviveToday] = useState(false);
 
+  // Level 1 Interactive Newcomer Tutorial Stage Step
+  const [tutorialStep, setTutorialStep] = useState<number | null>(null);
+
+  // Playtime health safety states
+  const [continuousPlayTimeMinutes, setContinuousPlayTimeMinutes] = useState<number>(0);
+  const [showHealthAlert, setShowHealthAlert] = useState<boolean>(false);
+
+  // Cumulative tiles matched & PvP total wins for the Honor Medal Wall
+  const [cumulativeTilesEliminated, setCumulativeTilesEliminated] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem("wechat_cumulative_tiles_eliminated");
+      return stored ? parseInt(stored, 10) : 8500; // start near 10,000 to facilitate testing/reviewing
+    } catch {
+      return 8500;
+    }
+  });
+
+  const [pvpTotalWins, setPvpTotalWins] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem("wechat_pvp_total_wins");
+      return stored ? parseInt(stored, 10) : 98; // start close to 100 to allow easy testing/reviewing
+    } catch {
+      return 98;
+    }
+  });
+
+  // Track regional rank surge reminder
+  const [previousUserProvinceRank, setPreviousUserProvinceRank] = useState<number | null>(null);
+
   // Daily Quests system for rewarding Golden Fingers & Revives
   const [dailyTilesEliminated, setDailyTilesEliminated] = useState<number>(() => {
     try {
@@ -481,6 +510,41 @@ export default function PhoneSimulator({
   useEffect(() => {
     setIsMuted(audio.getMuted());
   }, []);
+
+  // 1. Playtime health advisor tracking loop
+  useEffect(() => {
+    if (gameState !== "playing") return;
+    const interval = setInterval(() => {
+      setContinuousPlayTimeMinutes(prev => {
+        const next = prev + 1;
+        if (next >= 60) {
+          setShowHealthAlert(true);
+        }
+        return next;
+      });
+    }, 60000); // 1 minute
+    return () => clearInterval(interval);
+  }, [gameState]);
+
+  // 2. Monitoring selected province's rank climb to trigger '赛区冲刺成功'
+  useEffect(() => {
+    // Compile current sorted list
+    const rankings = PROVINCES.map(name => {
+      const score = provinceScores[name] || 0;
+      return { name, score };
+    }).sort((a, b) => b.score - a.score);
+
+    const userRankIdx = rankings.findIndex(item => item.name === selectedProvince);
+    if (userRankIdx !== -1) {
+      const currentRank = userRankIdx + 1;
+      // If we had a previous rank and it improved (currentRank number < previousRank)
+      if (previousUserProvinceRank !== null && currentRank < previousUserProvinceRank) {
+        showWechatToast(`🚀 喜报！您所属的【${selectedProvince}】在风云榜上狂飙！成功逆袭突入到全国第 ${currentRank} 名！『赛区冲刺成功』！🔥`);
+        try { audio.playAdComplete(); } catch (e) {}
+      }
+      setPreviousUserProvinceRank(currentRank);
+    }
+  }, [provinceScores, selectedProvince]);
 
   // Live regional updates interval simulation to make database/contest feel real-time & viral!
   useEffect(() => {
@@ -920,6 +984,13 @@ export default function PhoneSimulator({
     setCurrentLevel(levelId);
     setLevelStartTimestamp(Date.now());
     setHasUsedMilestoneReviveToday(false);
+    
+    if (levelId === 1) {
+      setTutorialStep(1);
+    } else {
+      setTutorialStep(null);
+    }
+
     const tiles = applySkinToTiles(generateLevelTiles(levelId), activeSkinTheme);
     setActiveTiles(tiles);
     setTray([]);
@@ -1093,6 +1164,15 @@ export default function PhoneSimulator({
           } catch (e) {}
           return next;
         });
+
+        // Track cumulative eliminated tiles for the Honor Wall
+        setCumulativeTilesEliminated(prev => {
+          const next = prev + 3;
+          try {
+            localStorage.setItem("wechat_cumulative_tiles_eliminated", next.toString());
+          } catch (e) {}
+          return next;
+        });
         
         // Clean up old match particles after 1.5 seconds to avoid performance footprints
         setTimeout(() => {
@@ -1199,6 +1279,15 @@ export default function PhoneSimulator({
               ...prev,
               [selectedProvince]: (prev[selectedProvince] || 0) + scoreReward
             }));
+
+            // Increment PvP total wins count for Medal Wall
+            setPvpTotalWins(prev => {
+              const next = prev + 1;
+              try {
+                localStorage.setItem("wechat_pvp_total_wins", next.toString());
+              } catch (e) {}
+              return next;
+            });
 
             // Increment Win Streak and save to localStorage
             setPvpWinStreak(prev => {
@@ -1877,6 +1966,68 @@ export default function PhoneSimulator({
                 </div>
               )}
 
+              {showHealthAlert && (
+                <div className="absolute inset-0 bg-black/75 z-55 flex flex-col justify-center items-center p-4 select-none">
+                  <motion.div 
+                    initial={{ scale: 0.85, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="bg-gradient-to-b from-indigo-950 via-slate-900 to-indigo-950 border-4 border-indigo-400 p-4 rounded-[32px] text-center text-white shadow-2xl space-y-3.5 max-w-[280px] relative overflow-hidden"
+                  >
+                    {/* Cute bouncing mascot */}
+                    <div className="relative pt-3 flex flex-col items-center">
+                      <motion.div 
+                        animate={{ 
+                          y: [0, -10, 0],
+                          rotate: [0, 8, -8, 0] 
+                        }}
+                        transition={{
+                          duration: 2.5,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                        className="text-6xl drop-shadow-md"
+                      >
+                        🐼
+                      </motion.div>
+                      <div className="bg-gradient-to-r from-yellow-400 to-amber-500 text-zinc-950 text-[7px] font-black uppercase px-2 py-0.5 rounded-full border border-yellow-300 animate-pulse mt-2">
+                        🛡️ 守护使者熊猫果果
+                      </div>
+                    </div>
+
+                    {/* Cute Speech Bubble dialog with text */}
+                    <div className="bg-white/10 border border-white/20 rounded-2xl p-3 text-left space-y-1.5 relative">
+                      <p className="text-[10.5px] text-zinc-100 font-bold leading-normal">
+                        【萌宠温馨语音】: 
+                        <span className="text-yellow-300 block mt-1 font-extrabold font-sans leading-relaxed">
+                          「嗷呜~ 铲屎官等一下！你已经在林子里连续消除卡牌超过 <span className="underline decoration-wavy">60分钟</span> 啦！熊熊看见你的萌萌大眼睛都有些酸疼了哦~ 快听话，放下手机，闭上双眼，和本果果一起到翠竹林里面打磨打磨，喝一口冰凉山泉再回来拿大积分吧！🐾」
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-black text-indigo-300 tracking-wider flex items-center justify-center gap-1">
+                        🌱 绿盟健康游戏护眼协议
+                      </h4>
+                      <p className="text-[7.5px] text-violet-300 font-bold">
+                        当前累积连续游戏时间：{continuousPlayTimeMinutes} 分钟
+                      </p>
+                    </div>
+
+                    {/* Button to confirm rest */}
+                    <button
+                      onClick={() => {
+                        try { audio.playTap(); } catch (e) {}
+                        setShowHealthAlert(false);
+                        setContinuousPlayTimeMinutes(0);
+                      }}
+                      className="w-full py-2 bg-gradient-to-r from-emerald-400 via-teal-300 to-emerald-400 hover:brightness-110 text-zinc-950 font-black text-[10px] rounded-xl transition cursor-pointer active:scale-95 shadow-md border border-emerald-300"
+                    >
+                      💖 听熊熊的话，这就松手休息！
+                    </button>
+                  </motion.div>
+                </div>
+              )}
+
               {showWechatLoginPrompt && (
                 <div className="absolute inset-0 bg-black/60 z-50 flex flex-col justify-end select-none">
                   <motion.div
@@ -2168,7 +2319,7 @@ export default function PhoneSimulator({
                       {/* Audio switch */}
                       <button 
                         onClick={handleMuteToggle}
-                        className="p-1 bg-zinc-105 hover:bg-zinc-205 rounded-lg text-zinc-600"
+                        className="p-1 bg-zinc-105 hover:bg-zinc-205 rounded-lg text-zinc-650 animate-fade-in"
                       >
                         {isMuted ? <VolumeX size={11} /> : <Volume2 size={11} />}
                       </button>
@@ -2214,7 +2365,7 @@ export default function PhoneSimulator({
                       onClick={() => { audio.playTap(); setLobbyTab("pvp_lobby"); }}
                       className={`flex-1 py-1.5 text-[9px] sm:text-[9.5px] font-black rounded-lg transition-all relative ${
                         lobbyTab === "pvp_lobby" 
-                          ? "bg-white text-zinc-800 shadow-xs" 
+                          ? "bg-white text-zinc-805 shadow-xs" 
                           : "text-zinc-500 hover:text-zinc-700"
                       }`}
                     >
@@ -2297,7 +2448,7 @@ export default function PhoneSimulator({
                               </span>
                               <button
                                 onClick={resetDailyQuests}
-                                className="text-[7px] sm:text-[7.5px] text-zinc-500 hover:text-indigo-600 font-bold px-1.5 py-0.5 rounded border border-zinc-200 hover:bg-zinc-100 transition active:scale-95 flex items-center gap-0.5 bg-white scale-95"
+                                className="text-[7px] sm:text-[7.5px] text-zinc-550 hover:text-indigo-600 font-bold px-1.5 py-0.5 rounded border border-zinc-200 hover:bg-zinc-100 transition active:scale-95 flex items-center gap-0.5 bg-white scale-95"
                                 title="测试: 重置每日任务"
                               >
                                 🔄 重置
@@ -2305,7 +2456,7 @@ export default function PhoneSimulator({
                             </div>
                           </div>
 
-                          <div className="space-y-2">
+                          <div className="space-y-2.5">
                             {/* Quest 1 */}
                             {(() => {
                               const q1Goal = 15;
@@ -2315,39 +2466,40 @@ export default function PhoneSimulator({
                               const q1Claimed = claimedDailyQuests.includes("q1");
 
                               return (
-                                <div className={`p-2 rounded-xl border transition ${
+                                <div className={`p-2.5 rounded-2xl border transition-all ${
                                   q1Claimed 
-                                    ? "bg-zinc-50/70 border-zinc-200 text-zinc-400" 
+                                    ? "bg-gradient-to-br from-zinc-100/60 to-zinc-200/50 border-zinc-250 text-zinc-400 opacity-75" 
                                     : q1Completed 
-                                      ? "bg-emerald-50/40 border-emerald-300 text-zinc-805 ring-1 ring-emerald-300/20" 
-                                      : "bg-white border-zinc-150 text-zinc-805"
+                                      ? "bg-gradient-to-br from-amber-500/10 via-yellow-105/30 to-amber-500/15 border-amber-400 ring-2 ring-amber-400/30 text-amber-950 shadow-sm animate-pulse" 
+                                      : "bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-indigo-100/30 border-purple-200 text-zinc-805"
                                 }`}>
                                   <div className="flex justify-between items-start gap-2">
                                     <div className="text-left leading-tight min-w-0 flex-1">
-                                      <p className="text-[9.5px] font-black flex items-center gap-1.5 text-zinc-800">
+                                      <p className={`text-[10px] font-black flex items-center gap-1.5 ${q1Claimed ? "text-zinc-500" : "text-zinc-900"}`}>
                                         <span>🎯</span> 小试身手
-                                        {q1Claimed && <span className="text-[6.5px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-250 px-1 rounded-sm leading-none shrink-0">已完成领受</span>}
+                                        {q1Claimed && <span className="text-[6.5px] font-black text-emerald-700 bg-emerald-100 border border-emerald-250 px-1 rounded-sm leading-none shrink-0">已领</span>}
+                                        {q1Completed && !q1Claimed && <span className="text-[6.5px] font-black text-amber-700 bg-amber-100 border border-amber-250 px-1 rounded-sm leading-none shrink-0 animate-pulse">可领取!</span>}
                                       </p>
-                                      <p className="text-[7.5px] text-slate-500 font-semibold mt-0.5">
+                                      <p className={`text-[7.5px] font-semibold mt-1 ${q1Claimed ? "text-zinc-400" : "text-zinc-650"}`}>
                                         任务：今日在关卡中累计消除 {q1Goal} 张卡牌。
                                       </p>
-                                      <p className="text-[7.5px] text-indigo-700 font-black mt-1">
+                                      <p className={`text-[7.5px] font-black mt-1 ${q1Claimed ? "text-zinc-400" : "text-indigo-700"}`}>
                                         奖励：撤销道具 x1、冻结时钟 x1
                                       </p>
                                     </div>
 
                                     <div className="shrink-0 flex flex-col items-end gap-1 select-none">
                                       {q1Claimed ? (
-                                        <span className="text-[7.5px] text-zinc-400 font-black">✔ 已领</span>
+                                        <span className="text-[7.5px] text-zinc-400 font-extrabold mr-1">✔ 已领</span>
                                       ) : q1Completed ? (
                                         <button
                                           onClick={() => claimDailyQuest("q1", "小试身手")}
-                                          className="text-[7.5px] bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-extrabold px-2 py-0.7 rounded-lg shadow-xs transition active:scale-95 animate-pulse cursor-pointer"
+                                          className="text-[7.5px] bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-amber-950 font-black px-2 py-0.8 rounded-lg shadow-sm transition active:scale-95 cursor-pointer border border-yellow-300"
                                         >
                                           🎁 领道具
                                         </button>
                                       ) : (
-                                        <span className="text-[7.5px] text-zinc-400 font-mono font-black bg-zinc-100 border border-zinc-250 px-1.5 py-0.5 rounded-lg leading-none">
+                                        <span className="text-[7.5px] text-zinc-555 font-black bg-white/85 border border-zinc-200 px-1.5 py-0.5 rounded-md leading-none shadow-xs">
                                           未达成
                                         </span>
                                       )}
@@ -2357,9 +2509,9 @@ export default function PhoneSimulator({
 
                                   {/* Progress bar */}
                                   {!q1Claimed && (
-                                    <div className="w-full bg-zinc-100 h-1 rounded-full mt-2 overflow-hidden border border-zinc-200/50">
+                                    <div className="w-full bg-zinc-200/70 h-1.5 rounded-full mt-2.5 overflow-hidden border border-zinc-300/30">
                                       <div 
-                                        className="bg-gradient-to-r from-indigo-400 to-purple-500 h-full rounded-full transition-all duration-300"
+                                        className="bg-linear-to-r from-indigo-500 to-purple-600 h-full rounded-full transition-all duration-300"
                                         style={{ width: `${q1Pct}%` }}
                                       />
                                     </div>
@@ -2377,39 +2529,40 @@ export default function PhoneSimulator({
                               const q2Claimed = claimedDailyQuests.includes("q2");
 
                               return (
-                                <div className={`p-2 rounded-xl border transition ${
+                                <div className={`p-2.5 rounded-2xl border transition-all ${
                                   q2Claimed 
-                                    ? "bg-zinc-50/70 border-zinc-200 text-zinc-400" 
+                                    ? "bg-gradient-to-br from-zinc-100/60 to-zinc-200/50 border-zinc-250 text-zinc-400 opacity-75" 
                                     : q2Completed 
-                                      ? "bg-emerald-50/40 border-emerald-300 text-zinc-805 ring-1 ring-emerald-300/20" 
-                                      : "bg-white border-zinc-150 text-zinc-805"
+                                      ? "bg-gradient-to-br from-amber-500/10 via-yellow-105/30 to-amber-500/15 border-amber-400 ring-2 ring-amber-400/30 text-amber-950 shadow-sm animate-pulse" 
+                                      : "bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-indigo-100/30 border-purple-200 text-zinc-805"
                                 }`}>
                                   <div className="flex justify-between items-start gap-2">
                                     <div className="text-left leading-tight min-w-0 flex-1">
-                                      <p className="text-[9.5px] font-black flex items-center gap-1.5 text-zinc-800">
+                                      <p className={`text-[10px] font-black flex items-center gap-1.5 ${q2Claimed ? "text-zinc-500" : "text-zinc-900"}`}>
                                         <span>⚡</span> 消消达人
-                                        {q2Claimed && <span className="text-[6.5px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-250 px-1 rounded-sm leading-none shrink-0">已完成领受</span>}
+                                        {q2Claimed && <span className="text-[6.5px] font-black text-emerald-700 bg-emerald-100 border border-emerald-250 px-1 rounded-sm leading-none shrink-0">已领</span>}
+                                        {q2Completed && !q2Claimed && <span className="text-[6.5px] font-black text-amber-700 bg-amber-100 border border-amber-250 px-1 rounded-sm leading-none shrink-0 animate-pulse">可领取!</span>}
                                       </p>
-                                      <p className="text-[7.5px] text-slate-500 font-semibold mt-0.5">
+                                      <p className={`text-[7.5px] font-semibold mt-1 ${q2Claimed ? "text-zinc-400" : "text-zinc-650"}`}>
                                         任务：今日在关卡中累计消除 {q2Goal} 张卡牌。
                                       </p>
-                                      <p className="text-[7.5px] text-indigo-700 font-black mt-1">
+                                      <p className={`text-[7.5px] font-black mt-1 ${q2Claimed ? "text-zinc-400" : "text-indigo-700"}`}>
                                         奖励：移出工具 x1、洗牌道具 x1
                                       </p>
                                     </div>
 
                                     <div className="shrink-0 flex flex-col items-end gap-1 select-none">
                                       {q2Claimed ? (
-                                        <span className="text-[7.5px] text-zinc-400 font-black">✔ 已领</span>
+                                        <span className="text-[7.5px] text-zinc-400 font-extrabold mr-1">✔ 已领</span>
                                       ) : q2Completed ? (
                                         <button
                                           onClick={() => claimDailyQuest("q2", "消消达人")}
-                                          className="text-[7.5px] bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-extrabold px-2 py-0.7 rounded-lg shadow-xs transition active:scale-95 animate-pulse cursor-pointer"
+                                          className="text-[7.5px] bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-amber-950 font-black px-2 py-0.8 rounded-lg shadow-sm transition active:scale-95 cursor-pointer border border-yellow-300"
                                         >
                                           🎁 领道具
                                         </button>
                                       ) : (
-                                        <span className="text-[7.5px] text-zinc-400 font-mono font-black bg-zinc-100 border border-zinc-250 px-1.5 py-0.5 rounded-lg leading-none">
+                                        <span className="text-[7.5px] text-zinc-555 font-black bg-white/85 border border-zinc-200 px-1.5 py-0.5 rounded-md leading-none shadow-xs">
                                           未达成
                                         </span>
                                       )}
@@ -2419,9 +2572,9 @@ export default function PhoneSimulator({
 
                                   {/* Progress bar */}
                                   {!q2Claimed && (
-                                    <div className="w-full bg-zinc-100 h-1 rounded-full mt-2 overflow-hidden border border-zinc-200/50">
+                                    <div className="w-full bg-zinc-200/70 h-1.5 rounded-full mt-2.5 overflow-hidden border border-zinc-300/30">
                                       <div 
-                                        className="bg-gradient-to-r from-indigo-400 to-purple-500 h-full rounded-full transition-all duration-300"
+                                        className="bg-linear-to-r from-indigo-500 to-purple-600 h-full rounded-full transition-all duration-300"
                                         style={{ width: `${q2Pct}%` }}
                                       />
                                     </div>
@@ -2440,39 +2593,40 @@ export default function PhoneSimulator({
                               const q3Claimed = claimedDailyQuests.includes("q3");
 
                               return (
-                                <div className={`p-2 rounded-xl border transition ${
+                                <div className={`p-2.5 rounded-2xl border transition-all ${
                                   q3Claimed 
-                                    ? "bg-zinc-50/70 border-zinc-200 text-zinc-400" 
+                                    ? "bg-gradient-to-br from-zinc-100/60 to-zinc-200/50 border-zinc-250 text-zinc-400 opacity-75" 
                                     : q3Completed 
-                                      ? "bg-emerald-50/40 border-emerald-300 text-zinc-805 ring-1 ring-emerald-300/20" 
-                                      : "bg-white border-zinc-150 text-zinc-805"
+                                      ? "bg-gradient-to-br from-amber-500/10 via-yellow-105/30 to-amber-500/15 border-amber-400 ring-2 ring-amber-400/30 text-amber-950 shadow-sm animate-pulse" 
+                                      : "bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-indigo-100/30 border-purple-200 text-zinc-805"
                                 }`}>
                                   <div className="flex justify-between items-start gap-2">
                                     <div className="text-left leading-tight min-w-0 flex-1">
-                                      <p className="text-[9.5px] font-black flex items-center gap-1.5 text-zinc-800">
+                                      <p className={`text-[10px] font-black flex items-center gap-1.5 ${q3Claimed ? "text-zinc-500" : "text-zinc-900"}`}>
                                         <span>🔥</span> 天梯自豪
-                                        {q3Claimed && <span className="text-[6.5px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-250 px-1 rounded-sm leading-none shrink-0">已完成领受</span>}
+                                        {q3Claimed && <span className="text-[6.5px] font-black text-emerald-700 bg-emerald-100 border border-emerald-250 px-1 rounded-sm leading-none shrink-0">已领</span>}
+                                        {q3Completed && !q3Claimed && <span className="text-[6.5px] font-black text-amber-700 bg-amber-100 border border-amber-250 px-1 rounded-sm leading-none shrink-0 animate-pulse">可领取!</span>}
                                       </p>
-                                      <p className="text-[7.5px] text-slate-500 font-semibold mt-0.5">
+                                      <p className={`text-[7.5px] font-semibold mt-1 ${q3Claimed ? "text-zinc-400" : "text-zinc-650"}`}>
                                         任务：今日在 1v1 天梯赛中累计斩获至少 {q3Goal} 连胜。
                                       </p>
-                                      <p className="text-[7.5px] text-indigo-700 font-black mt-1">
+                                      <p className={`text-[7.5px] font-black mt-1 ${q3Claimed ? "text-zinc-400" : "text-indigo-700"}`}>
                                         奖励：加时沙漏 x2、免费复活机会 +1
                                       </p>
                                     </div>
 
                                     <div className="shrink-0 flex flex-col items-end gap-1 select-none">
                                       {q3Claimed ? (
-                                        <span className="text-[7.5px] text-zinc-400 font-black">✔ 已领</span>
+                                        <span className="text-[7.5px] text-zinc-400 font-extrabold mr-1">✔ 已领</span>
                                       ) : q3Completed ? (
                                         <button
                                           onClick={() => claimDailyQuest("q3", "天梯自豪")}
-                                          className="text-[7.5px] bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-extrabold px-2 py-0.7 rounded-lg shadow-xs transition active:scale-95 animate-pulse cursor-pointer"
+                                          className="text-[7.5px] bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-amber-950 font-black px-2 py-0.8 rounded-lg shadow-sm transition active:scale-95 cursor-pointer border border-yellow-300"
                                         >
                                           🎁 领道具
                                         </button>
                                       ) : (
-                                        <span className="text-[7.5px] text-zinc-400 font-mono font-black bg-zinc-100 border border-zinc-250 px-1.5 py-0.5 rounded-lg leading-none">
+                                        <span className="text-[7.5px] text-zinc-555 font-black bg-white/85 border border-zinc-200 px-1.5 py-0.5 rounded-md leading-none shadow-xs">
                                           未达成
                                         </span>
                                       )}
@@ -2482,9 +2636,9 @@ export default function PhoneSimulator({
 
                                   {/* Progress bar */}
                                   {!q3Claimed && (
-                                    <div className="w-full bg-zinc-100 h-1 rounded-full mt-2 overflow-hidden border border-zinc-200/50">
+                                    <div className="w-full bg-zinc-200/70 h-1.5 rounded-full mt-2.5 overflow-hidden border border-zinc-300/30">
                                       <div 
-                                        className="bg-gradient-to-r from-orange-400 to-rose-500 h-full rounded-full transition-all duration-300"
+                                        className="bg-linear-to-r from-orange-400 to-rose-500 h-full rounded-full transition-all duration-300"
                                         style={{ width: `${q3Pct}%` }}
                                       />
                                     </div>
@@ -2769,26 +2923,68 @@ export default function PhoneSimulator({
                                 return (
                                   <div 
                                     key={item.name} 
-                                    className={`p-1.5 rounded-xl border flex items-center gap-1.5 transition-all ${
-                                      isUserSelected 
-                                        ? "bg-rose-50 border-rose-300/60 ring-1 ring-rose-300" 
-                                        : "bg-white border-zinc-250/50 hover:bg-zinc-50/40"
+                                    className={`p-1.5 rounded-xl border flex items-center gap-1.5 transition-all relative ${
+                                      index === 0
+                                        ? "bg-linear-to-r from-amber-500/10 via-yellow-100/15 to-amber-500/10 border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.35)]"
+                                        : isUserSelected 
+                                          ? "bg-rose-50 border-rose-300/60 ring-1 ring-rose-300" 
+                                          : "bg-white border-zinc-250/50 hover:bg-zinc-50/40"
                                     }`}
                                   >
-                                    <span className={`text-[10px] font-black font-mono w-4 block text-center shrink-0 ${
-                                      index === 0 ? "text-amber-500 font-extrabold" : "text-zinc-500"
-                                    }`}>
-                                      {index + 1}
-                                    </span>
+                                    {/* Rotating Golden Ring Aura behind Rank #1 */}
+                                    {index === 0 && (
+                                      <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/5 via-transparent to-amber-500/5 rounded-xl pointer-events-none animate-pulse" />
+                                    )}
+
+                                    <div className="flex flex-col items-center justify-center shrink-0 w-5">
+                                      {index === 0 ? (
+                                        <motion.span 
+                                          animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.15, 1] }} 
+                                          transition={{ duration: 2, repeat: Infinity }}
+                                          className="text-[10px] leading-none"
+                                        >
+                                          👑
+                                        </motion.span>
+                                      ) : (
+                                        <span className={`text-[10px] font-black font-mono block text-center shrink-0 ${
+                                          isUserSelected ? "text-rose-605" : "text-zinc-500"
+                                        }`}>
+                                          {index + 1}
+                                        </span>
+                                      )}
+                                    </div>
+                                    
                                     <span className="text-[11px] shrink-0 select-none">{item.avatar}</span>
                                     
                                     <div className="flex-1 text-left leading-none min-w-0 pr-1">
                                       <div className="flex justify-between items-center mb-1 gap-1">
-                                        <span className={`text-[9.5px] font-black truncate max-w-[80px] ${isUserSelected ? "text-rose-600" : "text-zinc-700"}`}>
+                                        <span className={`text-[9.5px] font-black truncate max-w-[80px] flex items-center gap-0.5 ${
+                                          index === 0 
+                                            ? "text-amber-800 font-extrabold" 
+                                            : isUserSelected 
+                                              ? "text-rose-600" 
+                                              : "text-zinc-700"
+                                        }`}>
                                           {item.name} {isUserSelected && "⭐"}
                                         </span>
                                         <div className="flex gap-1.5 text-[8.5px] font-mono text-zinc-550 font-bold shrink-0">
-                                          <span>得: <strong className="text-zinc-800">{item.score.toLocaleString()}</strong></span>
+                                          <span>
+                                            得: <motion.strong 
+                                              className={index === 0 ? "text-amber-700" : isUserSelected ? "text-rose-700" : "text-zinc-805"}
+                                              animate={{
+                                                scale: [1, 1.04, 1],
+                                                y: [0, -0.5, 0.5, 0]
+                                              }}
+                                              transition={{
+                                                duration: index === 0 ? 1.5 : 3,
+                                                repeat: Infinity,
+                                                ease: "easeInOut",
+                                                delay: index * 0.1
+                                              }}
+                                            >
+                                              {item.score.toLocaleString()}
+                                            </motion.strong>
+                                          </span>
                                           <span className="text-teal-600 font-sans font-bold">🕒 {item.avgTime}秒</span>
                                         </div>
                                       </div>
@@ -2798,7 +2994,7 @@ export default function PhoneSimulator({
                                           <div 
                                             className={`h-full rounded-full transition-all duration-700 ${
                                               index === 0 
-                                                ? "bg-linear-to-r from-yellow-400 to-amber-500" 
+                                                ? "bg-linear-to-r from-yellow-400 via-amber-400 to-yellow-500" 
                                                 : isUserSelected 
                                                   ? "bg-rose-500" 
                                                   : "bg-teal-500"
@@ -4014,6 +4210,96 @@ export default function PhoneSimulator({
                             </motion.div>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {/* Interactive Newcomer Tutorial Mask Overlay for Level 1 */}
+                    {currentLevel === 1 && tutorialStep !== null && (
+                      <div className="absolute inset-0 bg-slate-950/80 z-40 flex flex-col justify-center items-center p-3 text-center rounded-2xl overflow-hidden backdrop-blur-xs select-none">
+                        {tutorialStep === 1 && (
+                          <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-white border-2 border-indigo-400 p-4 rounded-3xl shadow-xl max-w-[260px] space-y-3 relative text-zinc-800"
+                          >
+                            <span className="absolute -top-7 left-1/2 -translate-x-1/2 text-4xl animate-bounce">🐶</span>
+                            <h4 className="text-[11px] font-black text-indigo-900 pt-1 tracking-tight flex items-center justify-center gap-1">
+                              <span>🔰</span> 激萌消消乐新手特训
+                            </h4>
+                            <p className="text-[9.5px] text-zinc-600 leading-normal font-sans">
+                              看到屏幕上的卡牌了吗？本关只有 <span className="text-indigo-600 font-extrabold bg-indigo-50 px-1 py-0.2 rounded border border-indigo-100">9 张卡牌</span>，没有任何压底和重叠，是磨头脑的最佳练习场！
+                            </p>
+                            <div className="bg-yellow-50 border border-yellow-200 p-2 rounded-xl text-[8.5px] text-amber-850 font-bold leading-normal text-left">
+                              💡 消除逻辑非常简单，点击任意可供消除的动物卡牌，它们会自动坠落到底部槽位。
+                            </div>
+                            <button
+                              onClick={() => {
+                                try { audio.playTap(); } catch (e) {}
+                                setTutorialStep(2);
+                              }}
+                              className="w-full py-1.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-extrabold text-[10px] rounded-xl transition shadow-xs active:scale-95 cursor-pointer leading-none"
+                            >
+                              了解如何进行匹配 ➔
+                            </button>
+                          </motion.div>
+                        )}
+                        
+                        {tutorialStep === 2 && (
+                          <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-white border-2 border-indigo-400 p-4 rounded-3xl shadow-xl max-w-[260px] space-y-3 relative text-zinc-800"
+                          >
+                            <span className="absolute -top-7 left-1/2 -translate-x-1/2 text-4xl animate-bounce">🐱</span>
+                            <h4 className="text-[11px] font-black text-indigo-900 pt-1 tracking-tight flex items-center justify-center gap-1">
+                              <span>⚡</span> 3连必消合体消除法则
+                            </h4>
+                            <p className="text-[9.5px] text-zinc-600 leading-normal font-sans">
+                              当最下方的卡牌槽中凑齐 <span className="text-emerald-600 font-black bg-emerald-50 px-1 py-0.2 rounded border border-emerald-100">3 只相同</span> 的萌宠时，它们就会立即发生绚丽的爆破合体并被消除！
+                            </p>
+                            <div className="bg-rose-50 border border-rose-250 p-2 rounded-xl text-[8.5px] text-rose-800 font-bold leading-normal text-left">
+                              ⚠️ 特别提醒：底部法阵槽位上限为 <span className="font-extrabold">7 个</span>！如果塞满 7 只却未能获得 3 连消除，闯关就会失败哦。
+                            </div>
+                            <button
+                              onClick={() => {
+                                try { audio.playTap(); } catch (e) {}
+                                setTutorialStep(3);
+                              }}
+                              className="w-full py-1.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-extrabold text-[10px] rounded-xl transition shadow-xs active:scale-95 cursor-pointer leading-none"
+                            >
+                              关卡道具和金手指 ➔
+                            </button>
+                          </motion.div>
+                        )}
+
+                        {tutorialStep === 3 && (
+                          <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-white border-2 border-indigo-400 p-4 rounded-3xl shadow-xl max-w-[260px] space-y-3 relative text-zinc-800"
+                          >
+                            <span className="absolute -top-7 left-1/2 -translate-x-1/2 text-4xl animate-bounce">🦄</span>
+                            <h4 className="text-[11px] font-black text-indigo-900 pt-1 tracking-tight flex items-center justify-center gap-1">
+                              <span>🎁</span> 关卡大度：5次特权护航
+                            </h4>
+                            <p className="text-[9.5px] text-zinc-600 leading-normal font-sans">
+                              为了让萌新无忧出发，在 Level 1，所有金手指求助工具（「撤销」、「洗牌」、「移出暂存」）的免费试用次数已被我们官方自动<b>增加到了 5 次</b>！
+                            </p>
+                            <div className="bg-indigo-50 border border-indigo-150 p-2 rounded-xl text-[8.5px] text-indigo-850 font-bold leading-normal text-left">
+                              ✨ 看到底板卡片上的精美手绘了吗？动手点击那 3 只一模一样的卡牌，即刻进行你的首次神级消灭行动！
+                            </div>
+                            <button
+                              onClick={() => {
+                                try { audio.playTap(); } catch (e) {}
+                                setTutorialStep(null);
+                                showWechatToast("💡 新手教导特训结束！请点击 3 张相同可爱的萌宠，启动你的指尖风暴吧！");
+                              }}
+                              className="w-full py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-extrabold text-[11px] rounded-xl transition shadow-md active:scale-95 animate-pulse cursor-pointer leading-none"
+                            >
+                              🐱 开启我的消消乐神话！
+                            </button>
+                          </motion.div>
+                        )}
                       </div>
                     )}
                   </div>
